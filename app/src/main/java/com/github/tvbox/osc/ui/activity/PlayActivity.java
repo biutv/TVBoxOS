@@ -288,6 +288,7 @@ public class PlayActivity extends BaseActivity {
                         String url = info.getString("url");
                         HashMap<String, String> headers = null;
                         webUserAgent = null;
+                        webHeaderMap = null;
                         if (info.has("header")) {
                             try {
                                 JSONObject hds = new JSONObject(info.getString("header"));
@@ -302,6 +303,7 @@ public class PlayActivity extends BaseActivity {
                                         webUserAgent = hds.getString(key).trim();
                                     }
                                 }
+                                webHeaderMap = headers;
                             } catch (Throwable th) {
 
                             }
@@ -315,9 +317,11 @@ public class PlayActivity extends BaseActivity {
                         }
                     } catch (Throwable th) {
 //                        errorWithRetry("获取播放信息错误", true);
+                        Toast.makeText(mContext, "获取播放信息错误", Toast.LENGTH_SHORT).show();
                     }
                 } else {
-                    errorWithRetry("获取播放信息错误", true);
+//                    errorWithRetry("获取播放信息错误", true);
+                    Toast.makeText(mContext, "获取播放信息错误", Toast.LENGTH_SHORT).show();
                 }
             }
         });
@@ -470,7 +474,7 @@ public class PlayActivity extends BaseActivity {
         String playTitleInfo = mVodInfo.name + " " + vs.name;
         mController.setTitle(playTitleInfo);
 
-        playUrl(null, null);
+//        playUrl(null, null);
         String progressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex;
         //存储播放进度
         Object bodyKey=CacheManager.getCache(MD5.string2MD5(progressKey));
@@ -508,6 +512,7 @@ public class PlayActivity extends BaseActivity {
     private String parseFlag;
     private String webUrl;
     private String webUserAgent;
+    private Map<String, String > webHeaderMap;
 
     private void initParse(String flag, boolean useParse, String playUrl, final String url) {
         parseFlag = flag;
@@ -648,7 +653,8 @@ public class PlayActivity extends BaseActivity {
                                 playUrl(rs.getString("url"), headers);
                             } catch (Throwable e) {
                                 e.printStackTrace();
-//                                errorWithRetry("解析错误", false);
+                                errorWithRetry("解析错误", false);
+//                                setTip("解析错误", false, true);
                             }
                         }
 
@@ -656,6 +662,7 @@ public class PlayActivity extends BaseActivity {
                         public void onError(Response<String> response) {
                             super.onError(response);
                             errorWithRetry("解析错误", false);
+//                            setTip("解析错误", false, true);
                         }
                     });
         } else if (pb.getType() == 2) { // json 扩展
@@ -671,8 +678,9 @@ public class PlayActivity extends BaseActivity {
                 @Override
                 public void run() {
                     JSONObject rs = ApiConfig.get().jsonExt(pb.getUrl(), jxs, webUrl);
-                    if (rs == null || !rs.has("url")) {
-                        errorWithRetry("解析错误", false);
+                    if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
+//                        errorWithRetry("解析错误", false);//没有url重试也没有重新获取
+                        setTip("解析错误", false, true);
                     } else {
                         HashMap<String, String> headers = null;
                         if (rs.has("header")) {
@@ -728,8 +736,9 @@ public class PlayActivity extends BaseActivity {
                 @Override
                 public void run() {
                     JSONObject rs = ApiConfig.get().jsonExtMix(parseFlag + "111", pb.getUrl(), finalExtendName, jxs, webUrl);
-                    if (rs == null || !rs.has("url")) {
-                        errorWithRetry("解析错误", false);
+                    if (rs == null || !rs.has("url") || rs.optString("url").isEmpty()) {
+//                        errorWithRetry("解析错误", false);
+                        setTip("解析错误", false, true);
                     } else {
                         if (rs.has("parse") && rs.optInt("parse", 0) == 1) {
                             runOnUiThread(new Runnable() {
@@ -850,22 +859,31 @@ public class PlayActivity extends BaseActivity {
                 @Override
                 public void run() {
                     // webUserAgent = "Mozilla/5.0 (Linux; Android 6.0.1; Moto G (4)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.198 Mobile Safari/537.36";
-                    String ua = webUserAgent;
                     if (mXwalkWebView != null) {
                         mXwalkWebView.stopLoading();
-                        if(ua != null) {
-                            mXwalkWebView.getSettings().setUserAgentString(ua);
+                        Map<String, String > map = new HashMap<String, String>() ;
+
+                        if(webUserAgent != null) {
+                            mXwalkWebView.getSettings().setUserAgentString(webUserAgent);
                         }
                         //mXwalkWebView.clearCache(true);
-                        mXwalkWebView.loadUrl(url);
+                        if(webHeaderMap != null){
+                            mXwalkWebView.loadUrl(url,webHeaderMap);
+                        }else {
+                            mXwalkWebView.loadUrl(url);
+                        }
                     }
                     if (mSysWebView != null) {
                         mSysWebView.stopLoading();
-                        if(ua != null) {
-                            mSysWebView.getSettings().setUserAgentString(ua);
+                        if(webUserAgent != null) {
+                            mSysWebView.getSettings().setUserAgentString(webUserAgent);
                         }
                         //mSysWebView.clearCache(true);
-                        mSysWebView.loadUrl(url);
+                        if(webHeaderMap != null){
+                            mSysWebView.loadUrl(url,webHeaderMap);
+                        }else {
+                            mSysWebView.loadUrl(url);
+                        }
                     }
                 }
             });
@@ -987,7 +1005,7 @@ public class PlayActivity extends BaseActivity {
             settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
 //        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         /* 添加webView配置 */
         //设置编码
         settings.setDefaultTextEncodingName("utf-8");
@@ -1148,7 +1166,7 @@ public class PlayActivity extends BaseActivity {
         settings.setBuiltInZoomControls(true);
         settings.setSupportZoom(false);
 //        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
-        settings.setCacheMode(WebSettings.LOAD_CACHE_ELSE_NETWORK);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         // settings.setUserAgentString(ANDROID_UA);
 
         webView.setBackgroundColor(Color.BLACK);
