@@ -268,6 +268,8 @@ public class FastSearchActivity extends BaseActivity {
             mGridViewFilter.setVisibility(View.GONE);
             return;
         }
+        mGridView.setVisibility(View.GONE);
+        mGridViewFilter.setVisibility(View.VISIBLE);
         String key = spNames.get(spName);
         if(key.isEmpty()) return;
 
@@ -276,8 +278,6 @@ public class FastSearchActivity extends BaseActivity {
 
         List<Movie.Video> list = resultVods.get(key);
         searchAdapterFilter.setNewData(list);
-        mGridView.setVisibility(View.GONE);
-        mGridViewFilter.setVisibility(View.VISIBLE);
     }
 
     private void fenci(){
