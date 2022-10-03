@@ -88,6 +88,7 @@ import java.io.File;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -584,8 +585,7 @@ public class PlayActivity extends BaseActivity {
                         String flag = info.optString("flag");
                         String url = info.getString("url");
                         HashMap<String, String> headers = null;
-                        //web给个默认的UA
-                        webUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.54 Safari/537.36";
+                        webUserAgent = null;
                         webHeaderMap = null;
                         if (info.has("header")) {
                             try {
@@ -731,12 +731,13 @@ public class PlayActivity extends BaseActivity {
             hasNext = mVodInfo.playIndex + 1 < mVodInfo.seriesMap.get(mVodInfo.playFlag).size();
         }
         if (!hasNext) {
-            if(mVodInfo!=null && isProgress){
+            if(isProgress && mVodInfo!=null){
                 mVodInfo.playIndex=0;
                 Toast.makeText(this, "已经是最后一集了!,即将跳到第一集继续播放", Toast.LENGTH_SHORT).show();
+            }else {
+                Toast.makeText(this, "已经是最后一集了!", Toast.LENGTH_SHORT).show();
+                return;
             }
-            Toast.makeText(this, "已经是最后一集了!", Toast.LENGTH_SHORT).show();
-            return;
         }else {
             mVodInfo.playIndex++;
         }
@@ -761,6 +762,10 @@ public class PlayActivity extends BaseActivity {
     private int autoRetryCount = 0;
 
     boolean autoRetry() {
+        if (loadFoundVideoUrls != null && loadFoundVideoUrls.size() > 0) {
+            autoRetryFromLoadFoundVideoUrls();
+            return true;
+        }
         if (autoRetryCount < 2) {
             play(false);
             autoRetryCount++;
@@ -771,6 +776,18 @@ public class PlayActivity extends BaseActivity {
         }
     }
 
+    void autoRetryFromLoadFoundVideoUrls() {
+        String videoUrl = loadFoundVideoUrls.poll();
+        HashMap<String,String> header = loadFoundVideoUrlsHeader.get(videoUrl);
+        playUrl(videoUrl, header);
+    }
+
+    void initParseLoadFound() {
+        loadFoundCount.set(0);
+        loadFoundVideoUrls = new LinkedList<String>();
+        loadFoundVideoUrlsHeader = new HashMap<String, HashMap<String, String>>();
+    }
+
     public void play(boolean reset) {
         VodInfo.VodSeries vs = mVodInfo.seriesMap.get(mVodInfo.playFlag).get(mVodInfo.playIndex);
         EventBus.getDefault().post(new RefreshEvent(RefreshEvent.TYPE_REFRESH, mVodInfo.playIndex));
@@ -779,7 +796,7 @@ public class PlayActivity extends BaseActivity {
         mController.setTitle(playTitleInfo);
 
         stopParse();
-        loadFoundCount.set(0);
+        initParseLoadFound();
         if(mVideoView!=null) mVideoView.release();
         String subtitleCacheKey = mVodInfo.sourceKey + "-" + mVodInfo.id + "-" + mVodInfo.playFlag + "-" + mVodInfo.playIndex+ "-" + vs.name + "-subt";
         String progressKey = mVodInfo.sourceKey + mVodInfo.id + mVodInfo.playFlag + mVodInfo.playIndex + vs.name;
@@ -899,7 +916,7 @@ public class PlayActivity extends BaseActivity {
 
     private void doParse(ParseBean pb) {
         stopParse();
-        loadFoundCount.set(0);
+        initParseLoadFound();
         if (pb.getType() == 0) {
             setTip("正在嗅探播放地址", true, false);
             mHandler.removeMessages(100);
@@ -1097,6 +1114,8 @@ public class PlayActivity extends BaseActivity {
     private WebView mSysWebView;
     private SysWebClient mSysWebClient;
     private Map<String, Boolean> loadedUrls = new HashMap<>();
+    private LinkedList<String> loadFoundVideoUrls = new LinkedList<>();
+    private HashMap<String, HashMap<String, String>> loadFoundVideoUrlsHeader = new HashMap<>();
     private AtomicInteger loadFoundCount = new AtomicInteger(0);
 
     void loadWebView(String url) {
@@ -1357,8 +1376,11 @@ public class PlayActivity extends BaseActivity {
 
             if (!ad) {
                 if (checkVideoFormat(url)) {
-                    LOG.i("checkVideoFormat:" + url );
+                    loadFoundVideoUrls.add(url);
+                    loadFoundVideoUrlsHeader.put(url, headers);
+                    LOG.i("loadFoundVideoUrl:" + url );
                     if (loadFoundCount.incrementAndGet() == 1) {
+                        url = loadFoundVideoUrls.poll();
                         mHandler.removeMessages(100);
                         if (headers != null && !headers.isEmpty()) {
                             playUrl(url, headers);
@@ -1395,13 +1417,15 @@ public class PlayActivity extends BaseActivity {
             HashMap<String, String> webHeaders = new HashMap<>();
             try {
                 Map<String, String> hds = request.getRequestHeaders();
-                if (!hds.isEmpty() && hds.size() > 0) {
-                    for (String k : hds.keySet()) {
+                for (String k : hds.keySet()) {
+                    if (k.equalsIgnoreCase("user-agent")
+                            || k.equalsIgnoreCase("referer")
+                            || k.equalsIgnoreCase("origin")) {
                         webHeaders.put(k, hds.get(k));
                     }
                 }
             } catch (Throwable th) {
-                th.printStackTrace();
+
             }
             WebResourceResponse response = checkIsVideo(url, webHeaders);
             return response;
@@ -1526,20 +1550,25 @@ public class PlayActivity extends BaseActivity {
             }
             if (!ad ) {
                 if (checkVideoFormat(url)) {
-                    LOG.i("checkVideoFormat:" + url );
+                    HashMap<String, String> webHeaders = new HashMap<>();
+                    try {
+                        Map<String, String> hds = request.getRequestHeaders();
+                        for (String k : hds.keySet()) {
+                            if (k.equalsIgnoreCase("user-agent")
+                                    || k.equalsIgnoreCase("referer")
+                                    || k.equalsIgnoreCase("origin")) {
+                                webHeaders.put(k, hds.get(k));
+                            }
+                        }
+                    } catch (Throwable th) {
+
+                    }
+                    loadFoundVideoUrls.add(url);
+                    loadFoundVideoUrlsHeader.put(url, webHeaders);
+                    LOG.i("loadFoundVideoUrl:" + url );
                     if (loadFoundCount.incrementAndGet() == 1) {
                         mHandler.removeMessages(100);
-                        HashMap<String, String> webHeaders = new HashMap<>();
-                        try {
-                            Map<String, String> hds = request.getRequestHeaders();
-                            if (!hds.isEmpty() && hds.size() > 0) {
-                                for (String k : hds.keySet()) {
-                                    webHeaders.put(k, hds.get(k));
-                                }
-                            }
-                        } catch (Throwable th) {
-                            th.printStackTrace();
-                        }
+                        url = loadFoundVideoUrls.poll();
                         if (webHeaders != null && !webHeaders.isEmpty()) {
                             playUrl(url, webHeaders);
                         } else {
