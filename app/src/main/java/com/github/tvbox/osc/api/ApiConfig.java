@@ -18,6 +18,7 @@ import com.github.tvbox.osc.util.AdBlocker;
 import com.github.tvbox.osc.util.DefaultConfig;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.MD5;
+import com.github.tvbox.osc.util.VideoParseRuler;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -61,7 +62,9 @@ public class ApiConfig {
 
     private JarLoader jarLoader = new JarLoader();
 
-    private String userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36";
+    private String userAgent = "okhttp/3.15";
+
+    private String requestAccept = "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9";
 
     private ApiConfig() {
         sourceBeanList = new LinkedHashMap<>();
@@ -104,6 +107,7 @@ public class ApiConfig {
         }
         OkGo.<String>get(apiFix)
                 .headers("User-Agent", userAgent)
+                .headers("Accept", requestAccept)
                 .execute(new AbsCallback<String>() {
                     @Override
                     public void onSuccess(Response<String> response) {
@@ -182,6 +186,7 @@ public class ApiConfig {
 
         OkGo.<File>get(jarUrl)
                 .headers("User-Agent", userAgent)
+                .headers("Accept", requestAccept)
                 .execute(new AbsCallback<File>() {
 
             @Override
@@ -255,6 +260,7 @@ public class ApiConfig {
             sb.setJar(DefaultConfig.safeJsonString(obj, "jar", ""));
             sb.setPlayerType(DefaultConfig.safeJsonInt(obj, "playerType", -1));
             sb.setCategories(DefaultConfig.safeJsonStringList(obj, "categories"));
+            sb.setClickSelector(DefaultConfig.safeJsonString(obj, "click", ""));
             if (firstSite == null)
                 firstSite = sb;
             sourceBeanList.put(siteKey, sb);
@@ -327,6 +333,20 @@ public class ApiConfig {
             }
         } catch (Throwable th) {
             th.printStackTrace();
+        }
+        //video parse rule for host
+        if (infoJson.has("rules")) {
+            for(JsonElement oneHostRule : infoJson.getAsJsonArray("rules")) {
+                JsonObject obj = (JsonObject) oneHostRule;
+                String host = obj.get("host").getAsString();
+                JsonArray ruleJsonArr = obj.getAsJsonArray("rule");
+                ArrayList<String> rule = new ArrayList<>();
+                for(JsonElement one : ruleJsonArr) {
+                    String oneRule = one.getAsString();
+                    rule.add(oneRule);
+                }
+                VideoParseRuler.addHostRule(host, rule);
+            }
         }
         // 广告地址
         for (JsonElement host : infoJson.getAsJsonArray("ads")) {
