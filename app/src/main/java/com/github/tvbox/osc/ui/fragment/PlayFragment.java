@@ -1,5 +1,6 @@
 package com.github.tvbox.osc.ui.fragment;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.app.Activity;
 import android.content.Context;
@@ -766,20 +767,15 @@ public class PlayFragment extends BaseLazyFragment {
     private SourceBean sourceBean;
 
     private void playNext(boolean isProgress) {
-        boolean hasNext = true;
+        boolean hasNext;
         if (mVodInfo == null || mVodInfo.seriesMap.get(mVodInfo.playFlag) == null) {
             hasNext = false;
         } else {
             hasNext = mVodInfo.playIndex + 1 < mVodInfo.seriesMap.get(mVodInfo.playFlag).size();
         }
         if (!hasNext) {
-            if(isProgress && mVodInfo!=null){
-                mVodInfo.playIndex=0;
-                Toast.makeText(requireContext(), "已经是最后一集了!,即将跳到第一集继续播放", Toast.LENGTH_SHORT).show();
-            }else {
-                Toast.makeText(requireContext(), "已经是最后一集了!", Toast.LENGTH_SHORT).show();
-                return;
-            }
+            Toast.makeText(requireContext(), "已经是最后一集了!", Toast.LENGTH_SHORT).show();
+            return;
         }else {
             mVodInfo.playIndex++;
         }
@@ -846,7 +842,7 @@ public class PlayFragment extends BaseLazyFragment {
         //重新播放清除现有进度
         if (reset) {
             CacheManager.delete(MD5.string2MD5(progressKey), 0);
-            CacheManager.delete(MD5.string2MD5(subtitleCacheKey), "");
+            CacheManager.delete(MD5.string2MD5(subtitleCacheKey), 0);
         }
         if (Thunder.play(vs.url, new Thunder.ThunderCallback() {
             @Override
@@ -964,25 +960,27 @@ public class PlayFragment extends BaseLazyFragment {
             setTip("正在嗅探播放地址", true, false);
             mHandler.removeMessages(100);
             mHandler.sendEmptyMessageDelayed(100, 20 * 1000);
-            // 解析ext
-            try {
-                HashMap<String, String> reqHeaders = new HashMap<>();
-                JSONObject jsonObject = new JSONObject(pb.getExt());
-                if (jsonObject.has("header")) {
-                    JSONObject headerJson = jsonObject.optJSONObject("header");
-                    Iterator<String> keys = headerJson.keys();
-                    while (keys.hasNext()) {
-                        String key = keys.next();
-                        if (key.equalsIgnoreCase("user-agent")) {
-                            webUserAgent = headerJson.getString(key).trim();
-                        }else {
-                            reqHeaders.put(key, headerJson.optString(key, ""));
+            if(pb.getExt()!=null){
+                // 解析ext
+                try {
+                    HashMap<String, String> reqHeaders = new HashMap<>();
+                    JSONObject jsonObject = new JSONObject(pb.getExt());
+                    if (jsonObject.has("header")) {
+                        JSONObject headerJson = jsonObject.optJSONObject("header");
+                        Iterator<String> keys = headerJson.keys();
+                        while (keys.hasNext()) {
+                            String key = keys.next();
+                            if (key.equalsIgnoreCase("user-agent")) {
+                                webUserAgent = headerJson.getString(key).trim();
+                            }else {
+                                reqHeaders.put(key, headerJson.optString(key, ""));
+                            }
                         }
+                        if(reqHeaders.size()>0)webHeaderMap = reqHeaders;
                     }
-                    if(reqHeaders.size()>0)webHeaderMap = reqHeaders;
+                } catch (Throwable e) {
+                    e.printStackTrace();
                 }
-            } catch (Throwable e) {
-                e.printStackTrace();
             }
             loadWebView(pb.getUrl() + webUrl);
 
@@ -1189,7 +1187,7 @@ public class PlayFragment extends BaseLazyFragment {
                 XWalkUtils.tryUseXWalk(mContext, new XWalkUtils.XWalkState() {
                     @Override
                     public void success() {
-                        initWebView(false);
+                        initWebView(!sourceBean.getClickSelector().isEmpty());
                         loadUrl(url);
                     }
 
@@ -1340,6 +1338,7 @@ public class PlayFragment extends BaseLazyFragment {
         }
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private void configWebViewSys(WebView webView) {
         if (webView == null) {
             return;
@@ -1435,8 +1434,19 @@ public class PlayFragment extends BaseLazyFragment {
         public void onPageFinished(WebView view, String url) {
             super.onPageFinished(view,url);
             String click=sourceBean.getClickSelector();
-            if(!click.isEmpty() && url.contains(click.split(";")[0])){
-                mSysWebView.loadUrl("javascript:$(\""+ click.split(";")[1]+"\").click();");
+            LOG.i("onPageFinished url:" + url);
+
+            if(!click.isEmpty()){
+                String selector;
+                if(click.contains(";")){
+                    if(!url.contains(click.split(";")[0]))return;
+                    selector=click.split(";")[1];
+                }else {
+                    selector=click.trim();
+                }
+                String js="$(\""+ selector+"\").click();";
+                LOG.i("javascript:" + js);
+                mSysWebView.loadUrl("javascript:"+js);
             }
         }
 
@@ -1497,7 +1507,8 @@ public class PlayFragment extends BaseLazyFragment {
                 for (String k : hds.keySet()) {
                     if (k.equalsIgnoreCase("user-agent")
                             || k.equalsIgnoreCase("referer")
-                            || k.equalsIgnoreCase("origin")) {
+                            || k.equalsIgnoreCase("origin")
+                            || k.equalsIgnoreCase("cookie")) {
                         webHeaders.put(k, hds.get(k));
                     }
                 }
@@ -1512,6 +1523,7 @@ public class PlayFragment extends BaseLazyFragment {
         }
     }
 
+    @SuppressLint("SetJavaScriptEnabled")
     private void configWebViewX5(XWalkView webView) {
         if (webView == null) {
             return;
@@ -1598,10 +1610,6 @@ public class PlayFragment extends BaseLazyFragment {
         @Override
         public void onLoadFinished(XWalkView view, String url) {
             super.onLoadFinished(view, url);
-            String click=sourceBean.getClickSelector();
-            if(!click.isEmpty() && url.contains(click.split(";")[0])){
-                mXwalkWebView.loadUrl("javascript:$(\""+ click.split(";")[1]+"\").click();");
-            }
         }
 
         @Override
@@ -1628,6 +1636,7 @@ public class PlayFragment extends BaseLazyFragment {
                 ad = loadedUrls.get(url);
             }
             if (!ad ) {
+
                 if (checkVideoFormat(url)) {
                     HashMap<String, String> webHeaders = new HashMap<>();
                     Map<String, String> hds = request.getRequestHeaders();
@@ -1635,7 +1644,8 @@ public class PlayFragment extends BaseLazyFragment {
                         for (String k : hds.keySet()) {
                             if (k.equalsIgnoreCase("user-agent")
                                     || k.equalsIgnoreCase("referer")
-                                    || k.equalsIgnoreCase("origin")) {
+                                    || k.equalsIgnoreCase("origin")
+                                    || k.equalsIgnoreCase("cookie")) {
                                 webHeaders.put(k, hds.get(k));
                             }
                         }
