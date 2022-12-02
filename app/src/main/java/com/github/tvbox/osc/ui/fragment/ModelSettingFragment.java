@@ -28,8 +28,10 @@ import com.github.tvbox.osc.ui.dialog.SearchRemoteTvDialog;
 import com.github.tvbox.osc.ui.dialog.SelectDialog;
 import com.github.tvbox.osc.ui.dialog.XWalkInitDialog;
 import com.github.tvbox.osc.util.FastClickCheckUtil;
+import com.github.tvbox.osc.util.FileUtils;
 import com.github.tvbox.osc.util.HawkConfig;
 import com.github.tvbox.osc.util.HistoryHelper;
+import com.github.tvbox.osc.util.LOG;
 import com.github.tvbox.osc.util.OkGoHelper;
 import com.github.tvbox.osc.util.PlayerHelper;
 import com.lzy.okgo.OkGo;
@@ -653,6 +655,27 @@ public class ModelSettingFragment extends BaseLazyFragment {
 
             }
         });
+
+        findViewById(R.id.llClearCache).setOnClickListener((view -> onClickClearCache(view)));
+    }
+
+    private void onClickClearCache(View v) {
+        FastClickCheckUtil.check(v);
+        String cachePath = FileUtils.getCachePath();
+        File cacheDir = new File(cachePath);
+        if (!cacheDir.exists()) {
+            Toast.makeText(getContext(), "暂无缓存", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try {
+            FileUtils.cleanDirectory(cacheDir);
+            Toast.makeText(getContext(), "缓存已清空", Toast.LENGTH_LONG).show();
+            return;
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        Toast.makeText(getContext(), "缓存清空出错", Toast.LENGTH_LONG).show();
+        return;
     }
 
 
